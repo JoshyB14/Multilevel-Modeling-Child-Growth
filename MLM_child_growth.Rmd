@@ -1,0 +1,198 @@
+---
+title: "HDAT9700: Assessment 2"
+output: github_document
+author: Josh Bryden
+date: "`r format(Sys.time(), '%d %B %Y')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+## Student Declaration 
+
+I declare that this assessment item is my own work, except where acknowledged, and has not been submitted for academic credit elsewhere or previously, or produced independently of this course (e.g. for a third party such as your place of employment) and acknowledge that the assessor of this item may, for the purpose of assessing this item: (i) Reproduce this assessment item and provide a copy to another member of the University; and/or (ii) Communicate a copy of this assessment item to a plagiarism checking service (which may then retain a copy of the assessment item on its database for the purpose of future plagiarism checking).  
+- [x] I understand and agree
+
+I certify that I have read and understood the University Rules in respect of Student Academic Misconduct.  
+- [x] I understand and agree
+
+I have a backup copy of the assessment.  
+- [x] I understand and agree
+
+### Document Setup
+The below code chunk installs the required libraries for this report/ document and loads in the dataset 'ncs_child_repeated.csv'.
+```{r}
+# add required libraries
+library(ggplot2)
+library(nlme)
+library(sjPlot)
+# load in dataset
+data <- read.csv('Data/ncs_child_repeated.csv')
+```
+
+
+
+## Introduction
+
+Physical measurements of a child in their first years of life, are of key importance in determining effects of community and family level factors on the child’s growth and development. Specifically, the change in children’s weight in their first years has been statically linked to these family and community variables (Smith & Shively, 2019). As such the changes in the weight of a child and the factors that can influence this weight change are of importance for designing a study on child development, health and overall wellbeing. The National Children’s Study (NCS) was a longitudinal study with 12,000 observations on children and their parents in America from birth to age 21, to investigate environmental effects on children’s development and health. Such a study design, due to its nested data structure lends itself towards a multilevel modeling in part due to a lack of independence in the data, inherently due to the repeated measurements of the same children and mothers over time. Other statistical methods of analysis that do not recognize the hierarchical structure of the data, tend to leave a significant amount of information out (Blance, 2012), furthermore Blance (2012) states that multilevel modeling allows for the hierarchical nature of the data to be used to the researcher’s advantage. The present dataset combines two NCS datasets: ‘Child’ and ‘Children Health’ and has been modified to exclude any additional younger siblings per mother, such that only the eldest child per mother is present and only singleton (non-twin or more) births are present. The study aims to determine the optimal longitudinal multilevel model for measuring a child’s weight change over their first 24 months.
+
+## Methods
+
+In order to determine the optimal longitudinal multilevel model when modelling children’s weight change over 6,12-, 18- and 24-month intervals (‘visit_wt’ variable in ncs_repeated.csv), we first determined whether or not a longitudinal multilevel model was required for the research question. We conducted a simple linear regression model using the ‘gls’ function from the ‘nlme’ package in R, modelling ‘visit_wt’ as an intercept only model, thus allowing us to compare more complicated models to, as hierarchical models are similar to simple regression models in that parameters are allowed to vary in the form of a random effect, whereas linear regression assumes a fixed effect which is estimated from the sample population (Field et al, 2012). 
+
+### Linear regression model
+```{r}
+# measuring visit_wt intercept only = ~1
+model1<- gls(visit_wt~1, data=data, method="ML", na.action= na.exclude)
+# output summary
+summary(model1)
+```
+
+
+Adding to the simple linear model, we created an intercept only multilevel model with a random intercept (variance components model), which accounts for each individual in the dataset and allows the model to model each subject with their own intercept, thus allowing us to see the mean weight in each child over time. Furthermore, the variance components model allows us to attribute some of the variance experienced in our model to the variation between children and variation within each child’s measurements across time, thus as there is no additional variables present (intercept only). As per Blance (2012), we call this model the null model as it is the most basic multilevel model that can be created. An ANOVA test was run to compare the two models due to the fact that both models only differed by one parameter in the random intercepts model (Field et al, 2012).
+
+#### Random intercept model (variance components)
+```{r}
+# random intercept model using lme from nlme, exclude NA values
+model2<- lme(visit_wt~1, random=~1|child_pidx, data = data, method="ML", na.action= na.exclude, control = list(opt="optim"))
+# output summary
+summary(model2)
+```
+
+#### ANOVA of model 1 and model 2
+```{r}
+# comapre both models with anova function 
+anova(model1,model2)
+```
+
+We then created a longitudinal multilevel model with a random intercept only, incorporating the variable of the children’s age (‘child_age’) at each ‘visit_wt’. This model allowed us to investigate the effects of the child’ age on their weight over 6,12-, 18- and 24-months and determine if a correlation between the two variables can be observed. This was achieved by using the ‘lme’ function from the ‘nlme’ library and incorporating ‘visit_wt~ child_age’ into the variance components model. 
+
+#### Random intercept with child_age
+```{r}
+# random intercept with age using lme unction from nmle, exclude NA values 
+model3<- lme(visit_wt~ child_age, random=~1|child_pidx, data = data, method="ML", na.action= na.exclude, control = list(opt="optim"))
+summary(model3)
+```
+
+Another multilevel model based off the immediate model above was created, with the addition of a random slope for ‘child_age’. This model allows for the natural variability in the relationship between slopes and intercepts, in that variability in the slopes should also affect the variability in the intercepts of said slopes (Field et al, 2012). Thus, this model allows the slope of the effect between a  child’s age and weight to vary and is achieved by incorporating the slope of  ‘child_age’ as a random variable (‘random=~1+child_age|child_pidx’). Much like the previous models, we compared both our random intercept model (with ‘child_age’) and our random intercepts and slopes model with ANOVA, as they differ by one term, this being the addition of the random slope of age. The ANOVA output showed that the random slopes and intercept model thus far has provided the best fit for the data.
+
+#### Model with random slope and intercepts
+```{r}
+# using lme from nmle package, create random slopes and intercepts MLM, exclude NA values 
+model4<- lme(visit_wt~ child_age, random=~1+child_age|child_pidx, data = data, method="ML", na.action= na.exclude, control = list(opt="optim"))
+# output model summary
+summary(model4)
+```
+
+#### ANOVA of model 3 and model 4
+```{r}
+# using anova function compare both models
+anova(model3, model4)
+```
+
+In order to investigate different functions of time on the model, we created a non-linear function of time as a quadratic and added it to our model. This allowed us to determine the positive or negative change in weight as the child ages. Tu et al (2013), describes this quadratic term as determining the level of acceleration or deceleration of the variable of interest over time. Thus, allowing us to evaluate the step change of weight as the child ages over the reporting period. ANOVA was used for the comparison of this model with the previous random slopes and intercept model, the current optimal model. The output showed that the addition of the non-linear function of time improved model fit over the random slopes and intercept model.
+
+#### Multilevel model with non-linear quadratic function
+```{r}
+# fitting model from model 4 with addition of quadratic term, exclude all NA values
+model5<- lme(visit_wt~ child_age + I(child_age^2), random=~1+child_age|child_pidx, data = data, method="ML", na.action= na.exclude, control = list(opt="optim"))
+# output model summary
+summary(model5)
+```
+
+#### ANOVA of model 4 and model 5
+```{r}
+# using anova compare both models
+anova(model4, model5)
+```
+
+We took our current optimal model and aimed to improve fit by inclusion of a fixed parameter of the child’s gender. This parameter aims to examine the differences in weight between the two genders, per unit change in weight. Due to the addition of this fixed parameter, we could once again use ANOVA to compare this model and our optimal growth curve model. The output of the comparison showed that this additional fixed effect of ‘child_sex’ resulted in a more optimal model when compared with the growth curve model. As such this model with the fixed effect of sex became our new optimal model for weight change.  
+
+#### Model with addition of fixed parameter
+```{r}
+# taking model 5 add fixed term of gender to model
+model6<- lme(visit_wt~ child_age + child_sex + I(child_age^2), random=~1+child_age|child_pidx, data = data, method="ML", na.action= na.exclude, control = list(opt="optim"))
+# output summary 
+summary(model6)
+```
+
+#### ANOVA of model 5 and model 6
+```{r}
+# compare both models with anova
+anova(model5,model6)
+```
+
+## Results
+
+The dataset used in this analysis is an amalgamation of two datasets from the NCS longitudinal study in America that measured approximately 12,000 observations of children and their parents from child’s birth to age 21. Specifically, the dataset is made up of the base ‘child’ dataset, which examines characteristics of the child and parents, and the ‘child health’ dataset which examined the child’s weight, overall health and presence of a number of common diseases/ symptoms. The aim of this body of research was to obtain the optimal longitudinal multilevel model for a child’s change in weight over 24 months using the variables ‘visit_wt’ (weight of child in pounds) and child_age (a continuous variable of the child’s age in years and months (e.g., 2.5 = 2 years 6 months)). From the code chunk below, we see that the distribution of 'visit_wt' (pounds) appears to be normally distributed except for the upper and lower regions of the distribution, and this is confirmed from the QQ plot below.
+
+```{r}
+# using ggplot create histogram for visit_wt, with blue colour and figure title
+ggplot(data, aes(visit_wt))+ geom_histogram(colour='blue', fill='lightblue') + ggtitle('Figure 1 - Histogram of visit_wt')
+# using ggplot create QQ plot to assess normal distributions using stat_qq function
+ggplot(data, aes(sample=visit_wt)) + stat_qq() + stat_qq_line() + ggtitle('Figure 2 - QQplot of visit_wt')
+
+```
+
+Examining the distribution of the variable child_age, we found that this variable is not normally distributed as per the plots below.
+
+```{r}
+# using ggplot create histogram for visit_wt, with blue colour and figure title
+ggplot(data, aes(child_age))+ geom_histogram(colour='blue', fill='lightblue') + ggtitle('Figure 3 - Histogram of child_age')
+# using ggplot create QQ plot to assess normal distribution of child_age
+ggplot(data, aes(sample=child_age)) + stat_qq() + stat_qq_line() + ggtitle('Figure 4 - QQplot of child_age')
+```
+
+From the output below we see that there is 2397 males and 6257 females in the dataset.
+```{r}
+# output number of males and female children in dataset
+table(data$child_sex)
+```
+
+
+
+Examining the relationship between child_age and visit_wt, as per the plot below (facetted so that 1= male, 2=female), we found that as age increased so did visit_wt.  
+
+```{r}
+# using ggplot create a scatter plot of visit_wt and child_age, with a trend line, facetted by gender
+ggplot(data, aes(x=child_age, y=visit_wt, colour=child_sex)) + geom_point() + geom_smooth(method='lm', se=TRUE) + facet_wrap(~child_sex) + labs(x='Age (months)', y= 'Visit weight (pounds)', colour='child_sex') + ggtitle('Figure 5 - Visit_wt against child_age facetted by Gender')
+
+```
+
+From our initial two models: linear regression and random intercepts, we found from the ANOVA output that the two models differed by two units, hence we cannot definitely conclude that one model fit better than the other.  After creating a multilevel model with a random intercept (incorporating child_age into the model)  and another model building upon this model with the inclusion of random slopes for child_age, we found based off our ANOVA output that the inclusion of the random slopes significantly improved the model fit to the data with a p value of less than 0.0001. 
+
+Building further upon this optimal random slopes and intercepts model, we included a non-linear quadratic function of time (child_age) to determine if this could improve model fit by evaluating the change in weight of the child and the level of acceleration or declaration in this change over time. Once again using ANOVA output, we found that based off the AIC that inclusion of this quadratic term significantly improved model fit, with model 5’s (quadratic term model) AIC lower by 800 units ( Table.1.) and a p value of less than 0.0001 compared to model 4 (random slopes and intercept). 
+
+Our final model built further upon the quadratic term model (model5) with the inclusion of gender (child_sex) as a fixed effect, allowing the effects of weight between the two genders, per unit change in weight to be examined. ANOVA was used to compare both models and found that this inclusion lowered the AIC by 345 units (Table.1.), with a p value of less than 0.0001. As such this model became our optimal model with a final AIC of 48284 (Table.1.).
+
+```{r}
+# creates a table of the 6 models outputting the AIC, CI, p values and estimates of each covariate
+tab_model(model1, model2, model3, model4,model5, model6, show.aic = TRUE, title = 'Table 1 - Summary of Model results', dv.labels = c('Model 1', 'Model 2', 'Model 3', 'Model 4', 'Model 5', 'Model 6'), pred.labels = c('Intercept','Age (child_age)', 'Quadratic age (child_age^2)','Gender (child_sex)'), string.ci = "Conf. Int (95%)", string.p = "P-Value", show.icc = FALSE, show.re.var = FALSE, show.r2 = FALSE)
+```
+
+## Discussion
+
+
+Our results above found that the optimal multilevel model to model children’s weight change over 24 months was model 6 with the inclusion of random intercepts and slopes, a quadratic term for time (child_age^2) and a fixed effect of gender (inclusion of child_sex). This model, also referred to as a growth curve model accounts for the differences in weight between children in our dataset (through age and gender), but also the differences within children across time (with respect to their weight change). Curran et al (2010) explains that growth curve models aim to explain the different trajectories of growth over time, which our optimal model does through the inclusion of both fixed effects (gender in our model due to its binary nature), and through random effects such as age and our quadratic term.
+
+Our optimal model found a 0.05 covariance parameter for the children’s age and their weight, suggesting a small ‘fanning out’ effect of the data over time, such that if plotted we should see each child’s trend line diverge from one another. Furthermore, our model showed a positive correlation between weight and age of the children at 0.95. This is expected as we can assume that a large majority of newborns will grow in size and therefore weight, with notable exceptions from disease and death. The growth curve model also found a deceleration of the change in weight over time through the addition of the quadratic term of time. Our growth curve model found a value of -0.012 for the quadratic term, suggesting a deceleration of the increase in weight over time (such that the increase in weight will slow as the child ages). Finally, our model found a difference in weight across each gender such that females tend to (with our optimal model) have a smaller weight of around 1.48 pounds at the same age when compared to males.
+
+The present study aimed to investigate modeling children’s weight change over time with the aid of multilevel modelling. The study used around 12,000 individual observations from children presenting sufficient data for model creation and was diversified across regions across America. The optimal model presented, explains the change in weight in children, whilst not being overly complex. The determination between a simple or more complex model that answers the research question at hand is subjective and hence the decision to halt further analysis of other covariates could have detracted from the study. Further research into the use of  multilevel models to model children’s weight change over time would be required to determine if a more optimal growth curve model exists from the NCS datasets.
+
+
+## References
+
+ Blance, A. (2012) ‘Multilevel Modelling’, in Tu, Yu-Kang & Greenwood, Darren C 2012, Modern Methods for Epidemiology 1. Aufl., Springer Netherlands, Dordrecht.
+
+Curran, PJ., Obeidat, K., Losardo, D. (2010). Twelve frequently asked questions about growth curve modelling. Journal of Cognition and Development 11,2.
+
+Field, A., Miles, J., Field, Z. (2012). ‘Multilevel Modelling’, in Discovering Statistics Using R. SAGE Publishing, p870.
+ 
+Smith, T., Shively, G. (2019). Multilevel analysis of individual, household, and community factors influencing child growth in Nepal. BMC Paediatrics 19, 91. 
+
+Tu, YK., Chiu, YW., Pandis, N. (2013). Analysing longitudinal orthodontic data. Part 1: Multilevel linear and curvilinear models. American Journal of Orthodontics and Dentofacial Orthopedics 144,3. 
+
+
+
